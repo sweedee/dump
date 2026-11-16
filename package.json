@@ -1,0 +1,12 @@
+{
+  "name": "dump",
+  "private": true,
+  "type": "module",
+  "description": "Phone-vibecoded prototypes, one GitHub Pages site.",
+  "scripts": {
+    "new": "node scripts/new.mjs",
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/serve.mjs",
+    "test": "node scripts/test.mjs"
+  }
+}

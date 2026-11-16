@@ -1,0 +1,53 @@
+name: Pages
+
+# main          -> https://<owner>.github.io/<repo>/
+# any branch    -> https://<owner>.github.io/<repo>/preview/<branch-slug>/
+# branch delete -> its preview is removed
+#
+# One-time setup: Settings → Pages → Source: "Deploy from a branch" → gh-pages / (root)
+
+on:
+  push:
+    branches-ignore: [gh-pages]
+  delete:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name != 'delete'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test apps
+        run: node scripts/test.mjs
+      - name: Build site
+        env:
+          PREVIEW_BRANCH: ${{ github.ref_name != github.event.repository.default_branch && github.ref_name || '' }}
+        run: node scripts/build.mjs
+      - name: Publish
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: bash scripts/deploy.sh publish "${{ github.ref_name }}"
+
+  cleanup:
+    if: github.event_name == 'delete' && github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Remove preview
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: bash scripts/deploy.sh remove "${{ github.event.ref }}"
