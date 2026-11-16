@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#14142b" />
+  <title>Patchwork</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧩</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="menu" class="screen">
+    <header class="menu-head">
+      <a class="back" href="../" aria-label="All prototypes">←</a>
+      <div>
+        <h1>Patchwork</h1>
+        <p>Build the level. Then beat it.</p>
+      </div>
+    </header>
+    <ol id="level-list"></ol>
+  </main>
+
+  <main id="game" class="screen" hidden>
+    <header class="game-head">
+      <button id="to-menu" class="icon" aria-label="Levels">☰</button>
+      <div class="title"><span id="lvl-num"></span> <span id="lvl-name"></span></div>
+      <div id="deaths" class="deaths" title="Deaths">☠ 0</div>
+    </header>
+
+    <div id="stage"><canvas id="cv"></canvas></div>
+
+    <section id="build-ui" class="panel">
+      <p id="hint" class="hint"></p>
+      <div id="tray" class="tray"></div>
+      <div class="row">
+        <button id="clear" class="btn ghost">Clear</button>
+        <button id="play" class="btn primary" disabled>Play ▶</button>
+      </div>
+    </section>
+
+    <section id="play-ui" class="panel" hidden>
+      <div class="row small">
+        <button id="rebuild" class="btn ghost">🔧 Rebuild</button>
+        <button id="respawn" class="btn ghost">↺ Restart</button>
+      </div>
+      <div class="controls">
+        <div id="pad" class="pad"><span>◀</span><span>▶</span></div>
+        <div id="jump" class="jump">⤒</div>
+      </div>
+    </section>
+
+    <div id="win" class="overlay" hidden>
+      <div class="card">
+        <h2>Cleared! 🎉</h2>
+        <p id="win-stats"></p>
+        <div class="row">
+          <button id="win-menu" class="btn ghost">Levels</button>
+          <button id="win-next" class="btn primary">Next ▶</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="ghost" class="drag-ghost" hidden></div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
