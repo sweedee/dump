@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#101822" />
+  <title>Foosbots</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ============ HOME ============ -->
+  <main id="home" class="screen scroll">
+    <header class="head">
+      <a class="back" href="../" aria-label="All prototypes">←</a>
+      <div>
+        <h1>Foosbots</h1>
+        <p>You don't play. You coach the bot.</p>
+      </div>
+    </header>
+
+    <section class="block">
+      <h2>Your bot</h2>
+      <div id="my-bot" class="botcard"></div>
+      <div class="row">
+        <button id="edit-bot" class="btn primary">✏️ Tune bot</button>
+        <button id="switch-bot" class="btn">⇄ Bots</button>
+      </div>
+      <div id="bot-list" class="botlist" hidden></div>
+    </section>
+
+    <section class="block">
+      <h2>Ladder <span id="ladder-prog" class="dim"></span></h2>
+      <p class="dim small">Beat each rival to climb. Every win earns your bot +2 build points.</p>
+      <ol id="ladder" class="ladder"></ol>
+    </section>
+
+    <section class="block">
+      <h2>Friendly</h2>
+      <p class="dim small">Any opponent, no stakes. Imported codes from friends land in your bots list.</p>
+      <div class="row">
+        <select id="friendly-opp"></select>
+        <button id="friendly-go" class="btn primary">Play ▶</button>
+      </div>
+    </section>
+    <footer class="foot dim small">Matches are first to 5 goals. Your bots and ladder progress are saved on this device.</footer>
+  </main>
+
+  <!-- ============ EDITOR ============ -->
+  <main id="editor" class="screen scroll" hidden>
+    <header class="head sticky">
+      <button id="ed-back" class="icon" aria-label="Back">←</button>
+      <input id="ed-name" class="name-input" maxlength="24" aria-label="Bot name" />
+      <div id="ed-budget" class="budget"></div>
+    </header>
+
+    <section class="block">
+      <div id="ed-colors" class="swatches"></div>
+    </section>
+
+    <section class="block">
+      <h2>Hardware <span class="dim small">· costs points</span></h2>
+      <div id="ed-stats" class="stats"></div>
+    </section>
+
+    <section class="block">
+      <h2>Brain <span class="dim small">· free, but every choice has a cost</span></h2>
+      <div id="ed-tactics" class="tactics"></div>
+    </section>
+
+    <section class="block">
+      <h2>Shot book</h2>
+      <p class="dim small">How often strikers pick each shot.</p>
+      <div id="ed-shots" class="tactics"></div>
+      <div class="spot">
+        <span>Signature spot</span>
+        <div id="ed-spot" class="seg"></div>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>Scrimmage lab</h2>
+      <p class="dim small">Simulates 40 matches instantly so you can see if a change actually helps.</p>
+      <div class="row">
+        <select id="lab-opp"></select>
+        <button id="lab-go" class="btn">Run 🧪</button>
+      </div>
+      <div id="lab-out" class="lab-out"></div>
+    </section>
+
+    <section class="block">
+      <h2>Start from an archetype</h2>
+      <div id="ed-presets" class="presets"></div>
+    </section>
+
+    <section class="block">
+      <h2>Share</h2>
+      <div class="row">
+        <button id="ed-copy" class="btn">📋 Copy code</button>
+        <button id="ed-import" class="btn">📥 Import code</button>
+      </div>
+      <div class="row">
+        <button id="ed-dup" class="btn">⧉ Duplicate</button>
+        <button id="ed-del" class="btn danger">🗑 Delete</button>
+      </div>
+    </section>
+    <div class="spacer"></div>
+  </main>
+
+  <!-- ============ MATCH ============ -->
+  <main id="match" class="screen" hidden>
+    <header class="scorebar">
+      <button id="m-quit" class="icon" aria-label="Leave match">✕</button>
+      <div class="side"><span class="dot" id="m-dot0"></span><span id="m-name0" class="nm"></span></div>
+      <div class="score"><span id="m-s0">0</span><span class="dash">–</span><span id="m-s1">0</span></div>
+      <div class="side right"><span id="m-name1" class="nm"></span><span class="dot" id="m-dot1"></span></div>
+    </header>
+    <div id="stage"><canvas id="cv"></canvas><div id="flash" class="flash"></div></div>
+    <section class="mpanel">
+      <div id="ticker" class="ticker"></div>
+      <div class="speeds" id="speeds">
+        <button data-s="0">⏸</button>
+        <button data-s="1" class="on">1×</button>
+        <button data-s="2">2×</button>
+        <button data-s="4">4×</button>
+        <button data-s="skip">⏭</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="result" class="overlay" hidden>
+    <div class="card">
+      <h2 id="r-title"></h2>
+      <div id="r-score" class="r-score"></div>
+      <div id="r-reward" class="reward" hidden></div>
+      <table id="r-stats" class="rstats"></table>
+      <div id="r-tips" class="tips"></div>
+      <div class="row">
+        <button id="r-tune" class="btn">✏️ Tune</button>
+        <button id="r-again" class="btn">↺ Rematch</button>
+        <button id="r-home" class="btn primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
