@@ -13,10 +13,11 @@
   <main id="home" class="screen scroll">
     <header class="head">
       <a class="back" href="../" aria-label="All prototypes">←</a>
-      <div>
+      <div class="grow">
         <h1>Foosbots</h1>
         <p>You don't play. You coach the bot.</p>
       </div>
+      <button class="icon mute" aria-label="Sound on/off">🔊</button>
     </header>
 
     <section class="block">
@@ -31,7 +32,7 @@
 
     <section class="block">
       <h2>Ladder <span id="ladder-prog" class="dim"></span></h2>
-      <p class="dim small">Beat each rival to climb. Every win earns your bot +2 build points.</p>
+      <p class="dim small">Beat each rival to climb. Every win earns your bot +1 ★.</p>
       <ol id="ladder" class="ladder"></ol>
     </section>
 
@@ -59,23 +60,13 @@
     </section>
 
     <section class="block">
-      <h2>Hardware <span class="dim small">· costs points</span></h2>
-      <div id="ed-stats" class="stats"></div>
+      <h2>Stars <span class="dim small">· tap to spend your star budget</span></h2>
+      <div id="ed-stars" class="stats"></div>
     </section>
 
     <section class="block">
-      <h2>Brain <span class="dim small">· free, but every choice has a cost</span></h2>
-      <div id="ed-tactics" class="tactics"></div>
-    </section>
-
-    <section class="block">
-      <h2>Shot book</h2>
-      <p class="dim small">How often strikers pick each shot.</p>
-      <div id="ed-shots" class="tactics"></div>
-      <div class="spot">
-        <span>Signature spot</span>
-        <div id="ed-spot" class="seg"></div>
-      </div>
+      <h2>Game plan</h2>
+      <div id="ed-choices" class="tactics"></div>
     </section>
 
     <section class="block">
@@ -114,6 +105,7 @@
       <div class="side"><span class="dot" id="m-dot0"></span><span id="m-name0" class="nm"></span></div>
       <div class="score"><span id="m-s0">0</span><span class="dash">–</span><span id="m-s1">0</span></div>
       <div class="side right"><span id="m-name1" class="nm"></span><span class="dot" id="m-dot1"></span></div>
+      <button class="icon mute" aria-label="Sound on/off">🔊</button>
     </header>
     <div id="stage"><canvas id="cv"></canvas><div id="flash" class="flash"></div></div>
     <section class="mpanel">

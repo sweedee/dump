@@ -12,7 +12,8 @@ const REACH_X = 44;       // how far in front/behind a rod a man can touch the b
 const ALIGN = 22;         // |man.y - ball.y| needed to touch it
 const WALL_E = 0.8;       // side wall restitution
 const MAN_E = 0.5;
-const HOLD_LIMIT = 5;     // seconds a rod may keep the ball (shot clock)
+const HOLD_LIMIT = 5;
+const LEADK = Number(globalThis.process?.env?.LEADK ?? 0.07);     // seconds a rod may keep the ball (shot clock)
 
 export const ROD_DEFS = [
   { role: 'GK', x: 75, n: 1, sp: 0, lo: 170, hi: 510 },
@@ -21,8 +22,8 @@ export const ROD_DEFS = [
   { role: 'ATT', x: 825, n: 3, sp: 185, lo: 30, hi: W - 30 - 370 },
 ];
 export const SHOT_TYPES = ['straight', 'pull', 'bank', 'snake'];
-const SHOT_SPEED = { straight: 1, pull: 0.9, bank: 1.7, snake: 1.3 };
-const SHOT_SIGMA = { straight: 1, pull: 2.1, bank: 0.85, snake: 1.7 };
+const SHOT_SPEED = { straight: 1, pull: 0.9, bank: 1.9, snake: 1.55 };
+const SHOT_SIGMA = { straight: 1, pull: 2.4, bank: 0.85, snake: 1.4 };
 
 // ---- stat → number conversions (shared with the UI so the editor can explain them) ----
 export const derive = (ai) => {
@@ -30,11 +31,11 @@ export const derive = (ai) => {
   return {
     delay: Math.max(1, Math.round((0.175 - 0.0095 * s.reflex) * HZ)), // ticks of perception lag
     rodSpeed: 500 + 210 * s.speed,                                    // mm/s
-    shotSpeed: 2250 + 430 * s.power,                                  // mm/s
+    shotSpeed: 2000 + 450 * s.power,                                  // mm/s
     passSpeed: 2000 + 140 * s.power,
     aimSigma: 0.105 - 0.0085 * s.accuracy,                            // radians
     control: s.control,
-    fumble: 0.08 - 0.0065 * s.control,                                // per second of holding
+    fumble: Math.max(0.004, 0.08 - 0.0065 * s.control),                                // per second of holding
     vision: 0.04 + 0.095 * s.vision,                                  // chance to read the gaps
   };
 };
@@ -74,6 +75,8 @@ export class Match {
   constructor(aiA, aiB, seed = 1, opt = {}) {
     this.ais = [aiA, aiB];
     this.d = [derive(aiA), derive(aiB)];
+    // reactive defences stay home and keep their balance: faster rods when defending
+    this.d.forEach((d, i) => (d.defSpeed = 1 + 0.7 * (1 - this.ais[i].tactics.read)));
     this.rng = mulberry32(seed >>> 0);
     this.goalsToWin = opt.goalsToWin ?? 5;
     this.maxTicks = (opt.maxSeconds ?? 900) * HZ;
@@ -97,11 +100,13 @@ export class Match {
     this.lastKick = null;
     this.slow = 0;
     this.hist = new Float32Array(256 * 2);
+    this.sfx = opt.sfx ? [] : null; // sound cues for the UI: { k: kind, v: 0..1, team }
     this.serve(this.rng() < 0.5 ? 0 : 1);
   }
 
   get time() { return this.tick / HZ; }
   manY(r, i) { return r.off + i * r.sp; }
+  snd(k, v = 1, team = -1) { if (this.sfx && this.sfx.length < 32) this.sfx.push({ k, v, team }); }
   log(team, kind, text) { this.events.push({ t: this.time, team, kind, text }); }
   gauss() {
     const u = 1 - this.rng(), v = this.rng();
@@ -134,7 +139,8 @@ export class Match {
 
     // rods
     for (const team of this.rods) for (const r of team) {
-      const maxV = this.d[r.team].rodSpeed * r.speedMul;
+      const dd = this.d[r.team];
+      const maxV = dd.rodSpeed * r.speedMul * (b.owner && b.owner.team === r.team ? 1 : dd.defSpeed);
       const want = clamp((r.target - r.off) * 30, -maxV, maxV);
       const acc = maxV * 16 * DT;
       r.v += clamp(want - r.v, -acc, acc);
@@ -167,8 +173,8 @@ export class Match {
     if ((b.x < 160 || b.x > L - 160) && (b.y < 140 || b.y > W - 140)) b.vy += (b.y < W / 2 ? 320 : -320) * DT;
     b.x += b.vx * DT; b.y += b.vy * DT;
 
-    if (b.y < BALL_R) { b.y = BALL_R; b.vy = Math.abs(b.vy) * WALL_E; }
-    else if (b.y > W - BALL_R) { b.y = W - BALL_R; b.vy = -Math.abs(b.vy) * WALL_E; }
+    if (b.y < BALL_R) { if (b.vy < -300) this.snd('wall', -b.vy / 5000); b.y = BALL_R; b.vy = Math.abs(b.vy) * WALL_E; }
+    else if (b.y > W - BALL_R) { if (b.vy > 300) this.snd('wall', b.vy / 5000); b.y = W - BALL_R; b.vy = -Math.abs(b.vy) * WALL_E; }
 
     const inMouth = b.y > GOAL_LO && b.y < GOAL_HI;
     if (b.x < BALL_R || b.x > L - BALL_R) {
@@ -176,8 +182,8 @@ export class Match {
         for (const py of [GOAL_LO, GOAL_HI]) for (const px of [0, L]) this.bouncePoint(px, py);
         if (b.x < -BALL_R) return this.goal(1);
         if (b.x > L + BALL_R) return this.goal(0);
-      } else if (b.x < BALL_R) { b.x = BALL_R; b.vx = Math.abs(b.vx) * 0.7; }
-      else { b.x = L - BALL_R; b.vx = -Math.abs(b.vx) * 0.7; }
+      } else if (b.x < BALL_R) { if (b.vx < -300) this.snd('wall', -b.vx / 5000); b.x = BALL_R; b.vx = Math.abs(b.vx) * 0.7; }
+      else { if (b.vx > 300) this.snd('wall', b.vx / 5000); b.x = L - BALL_R; b.vx = -Math.abs(b.vx) * 0.7; }
     }
 
     // men
@@ -192,7 +198,7 @@ export class Match {
         b.x = r.x + nx * HIT_R; b.y = my + ny * HIT_R;
         const rvx = b.vx, rvy = b.vy - r.v, pvx = b.vx, ps = Math.hypot(b.vx, b.vy);
         const vn = rvx * nx + rvy * ny;
-        if (vn < 0) { b.vx -= (1 + MAN_E) * vn * nx; b.vy -= (1 + MAN_E) * vn * ny; }
+        if (vn < 0) { b.vx -= (1 + MAN_E) * vn * nx; b.vy -= (1 + MAN_E) * vn * ny; if (vn < -250) this.snd('block', -vn / 5000, r.team); }
         // a graze that barely changes the ball's course is a deflection, not a block
         if (Math.sign(b.vx) !== Math.sign(pvx) || Math.hypot(b.vx, b.vy) < ps * 0.6) this.touched(r);
         else if (this.lastKick && !this.lastKick.done && this.lastKick.team !== r.team) this.lastKick.deflected = true;
@@ -217,7 +223,7 @@ export class Match {
     const nx = dx / d, ny = dy / d;
     b.x = px + nx * BALL_R; b.y = py + ny * BALL_R;
     const vn = b.vx * nx + b.vy * ny;
-    if (vn < 0) { b.vx -= 1.7 * vn * nx; b.vy -= 1.7 * vn * ny; }
+    if (vn < 0) { b.vx -= 1.7 * vn * nx; b.vy -= 1.7 * vn * ny; this.snd('post', -vn / 4000); }
   }
 
   touched(r) {
@@ -249,6 +255,7 @@ export class Match {
     else label = 'Scrappy rebound';
     if (k) k.done = true;
     this.log(team, 'goal', `GOAL! ${label}`);
+    this.snd('goal', 1, team);
     this.ball.vx = this.ball.vy = 0;
     this.ball.x = team ? -BALL_R * 2 : L + BALL_R * 2;
     if (this.score[team] >= this.goalsToWin) return this.end(team);
@@ -259,11 +266,13 @@ export class Match {
   end(winner) {
     this.over = true; this.winner = winner;
     this.log(winner, 'end', winner < 0 ? 'Full time — draw' : 'Full time');
+    this.snd('end', 1, winner);
   }
 
   // ---------- perception ----------
   perceived(team) {
-    const d = this.d[team].delay;
+    // reading defences anticipate, which cuts their effective reaction time
+    const d = Math.max(1, Math.round(this.d[team].delay * (1 - 0.35 * this.ais[team].tactics.read)));
     const t = Math.max(0, this.tick - d), t2 = Math.max(0, t - 6);
     const h = (t & 255) * 2, h2 = (t2 & 255) * 2;
     if (this.tick - d < 7) return { x: this.ball.x, y: this.ball.y, vx: this.ball.vx, vy: this.ball.vy };
@@ -312,8 +321,11 @@ export class Match {
     }
     if (b.owner && b.owner.team !== T) {
       const between = (r.x - pb.x) * (ownGoal - r.x) > 0;
-      const lead = clamp(pb.vy * 0.07 * tac.read, -60, 60);
-      const sy = pb.y + lead;
+      const lead = clamp(pb.vy * 0.11 * tac.read, -80, 80); // readers commit to where the shooter is heading
+      let sy = pb.y + lead;
+      // reading defences bite on fakes: they jump to where the dummy is heading and get caught there
+      const P = this.team[1 - T].poss;
+      if (tac.read > 0.6 && P && (P.phase === 'fake' || P.phase === 'settle') && P.fakeY != null) sy = P.fakeY + P.fakeDir * 90 * tac.read;
       if (between && (r.role === 'GK' || r.role === 'DEF')) {
         const shots = tm.oppShots, n = shots.length;
         let mean = W / 2;
@@ -399,6 +411,7 @@ export class Match {
     if (!serve && b.owner == null) {
       // keep track of steals for the stats panel
     }
+    if (!serve) this.snd('trap', Math.min(1, Math.hypot(b.vx, b.vy) / 3000), T); else this.snd('whistle');
     b.owner = { team: T, rod: r.idx, man }; b.vx = b.vy = 0;
     this.team[0].pending = this.team[1].pending = null;
     const action = this.chooseAction(T, r);
@@ -423,6 +436,7 @@ export class Match {
       r.trapCD = 0.35;
       this.stats[T].fumbles++;
       this.log(T, 'fumble', `${ROLE_NAME[r.role]} fumbles the ball`);
+      this.snd('fumble', 0.4, T);
       return;
     }
     if ((this.tick - P.start) / HZ > HOLD_LIMIT && P.phase !== 'pull') {
@@ -455,6 +469,7 @@ export class Match {
           P.fakeDir = my < W / 2 ? (R() < 0.7 ? 1 : -1) : (R() < 0.7 ? -1 : 1);
           if (my + P.fakeDir * 90 > hi || my + P.fakeDir * 90 < lo) P.fakeDir = -P.fakeDir;
           P.fakeY = clamp(my + P.fakeDir * (70 + 50 * R()), lo, hi);
+          P.fakeFrom = my;
           P.until = this.tick + 0.18 * HZ;
           P.phase = 'fake';
         } else if (P.action.kind === 'shot' && P.action.type === 'pull') {
@@ -563,6 +578,7 @@ export class Match {
     const vx = r.dir * speed / Math.sqrt(1 + slope * slope);
     b.x = bx; b.y = by; b.vx = vx; b.vy = Math.abs(vx) * slope;
     r.lift = 0.06; r.kickT = 0.16; r.trapCD = 0.3;
+    this.snd(a.kind === 'shot' ? 'shot' : 'pass', speed / 7000, T);
   }
 }
 
