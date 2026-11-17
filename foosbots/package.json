@@ -1,0 +1,8 @@
+{
+  "name": "foosbots",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tools/balance.mjs 6"
+  }
+}
