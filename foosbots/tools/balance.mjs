@@ -2,7 +2,7 @@
 // Round-robin of presets + ladder rivals. Prints win-rate matrix and match stats.
 //   node tools/balance.mjs [matchesPerPair=20]
 import { simulate, HZ } from '../src/sim.js';
-import { PRESETS, RIVALS, cost } from '../src/teams.js';
+import { PRESETS, RIVALS, cost, compile } from '../src/teams.js';
 
 const N = Number(process.argv[2] || 20);
 const who = process.argv[3] || 'all';
@@ -15,7 +15,7 @@ for (let i = 0; i < teams.length; i++) for (let j = i + 1; j < teams.length; j++
   for (let k = 0; k < N; k++) {
     const swap = k & 1;
     const A = swap ? j : i, B = swap ? i : j;
-    const m = simulate(teams[A], teams[B], 1000 * i + 37 * j + k);
+    const m = simulate(compile(teams[A]), compile(teams[B]), 1000 * i + 37 * j + k);
     matches++; goals += m.score[0] + m.score[1]; secs += m.tick / HZ;
     if (m.winner < 0) draws++; else wins[m.winner ? B : A][m.winner ? A : B]++;
     [A, B].forEach((t, s) => {

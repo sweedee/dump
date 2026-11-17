@@ -1,16 +1,17 @@
-import { Match, simulate, HZ, SHOT_NAME } from './sim.js';
+import { Match, simulate, HZ, L, W } from './sim.js';
 import {
-  STAT_KEYS, STAT_MIN, STAT_MAX, STATS, TACTICS, SHOTS, COLORS, PRESETS, RIVALS,
-  START_BUDGET, BUDGET_STEP, blankAI, cost, encode, decode, sanitize,
+  STAR_KEYS, STAR_MIN, STAR_MAX, STARS, CHOICES, COLORS, PRESETS, RIVALS,
+  START_BUDGET, BUDGET_STEP, blankAI, cost, compile, details, encode, decode, sanitize,
 } from './teams.js';
 import { makeRenderer } from './render.js';
+import * as sfx from './sound.js';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 // ---------- persistence ----------
-const KEY = 'foosbots:v1';
+const KEY = 'foosbots:v2';
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
@@ -21,9 +22,7 @@ function load() {
       return s;
     }
   } catch {}
-  const first = clone(PRESETS[0]);
-  first.name = 'My Bot'; first.color = COLORS[0];
-  delete first.emoji; delete first.blurb;
+  const first = sanitize({ ...clone(PRESETS[0]), name: 'My Bot', color: COLORS[0] });
   return { bots: [first], cur: 0, beaten: 0 };
 }
 const S = load();
@@ -42,6 +41,10 @@ function show(id) {
   window.scrollTo(0, 0);
 }
 
+const optLabel = (k, v) => CHOICES.find((c) => c[0] === k)[2].find((o) => o[0] === v)[1];
+const pips = (ai) => `<div class="pips">${STAR_KEYS.map((k) => `<span>${STARS[k].icon} ${ai.stars[k]}</span>`).join('')}
+  ${CHOICES.map(([k]) => `<span>${CHOICE_ICON[k]} ${optLabel(k, ai.style[k])}</span>`).join('')}</div>`;
+const CHOICE_ICON = { tempo: '⏱', build: '↗', shot: '🥅', defence: '🛡' };
 const badge = (ai, big) => `<span class="badge" style="background:${ai.color}">${ai.emoji ? ai.emoji : esc(ai.name.trim()[0] || '?').toUpperCase()}</span>`;
 
 // ---------- home ----------
@@ -49,10 +52,10 @@ function renderHome() {
   const b = bot(), c = cost(b), B = budget();
   $('#my-bot').innerHTML = `${badge(b)}
     <div class="grow"><div class="nm">${esc(b.name)}</div>
-    <div class="sub">${c}/${B} points ${c > B ? '· <b style="color:var(--bad)">over budget!</b>' : c < B ? '· <b style="color:var(--accent)">' + (B - c) + ' unspent</b>' : ''}</div>
-    <div class="pips">${STAT_KEYS.map((k) => `<span>${STATS[k].icon} ${b.stats[k]}</span>`).join('')}</div></div>`;
+    <div class="sub">${c}/${B} ★ ${c > B ? '· <b style="color:var(--bad)">over budget!</b>' : c < B ? '· <b style="color:var(--accent)">' + (B - c) + ' unspent</b>' : ''}</div>
+    ${pips(b)}</div>`;
 
-  $('#bot-list').innerHTML = S.bots.map((x, i) => `<button data-i="${i}" class="${i === S.cur ? 'cur' : ''}">${badge(x)}<span class="grow">${esc(x.name)}</span><span class="dim small">${cost(x)} pts</span></button>`).join('')
+  $('#bot-list').innerHTML = S.bots.map((x, i) => `<button data-i="${i}" class="${i === S.cur ? 'cur' : ''}">${badge(x)}<span class="grow">${esc(x.name)}</span><span class="dim small">${cost(x)} ★</span></button>`).join('')
     + `<button data-new="1"><span class="badge" style="background:var(--panel2);color:var(--ink)">+</span><span class="grow">New bot</span></button>`;
 
   $('#ladder-prog').textContent = `· ${S.beaten}/${RIVALS.length}`;
@@ -61,7 +64,7 @@ function renderHome() {
     const btn = st === 'locked' ? '<span class="dim">🔒</span>'
       : `<button class="btn ${st === 'next' ? 'primary' : ''}" data-rival="${i}">${st === 'next' ? 'Fight ▶' : 'Rematch'}</button>`;
     return `<li class="${st}"><span class="em">${r.emoji}</span><div class="grow"><div class="nm">${esc(r.name)}</div>
-      <div class="bl">${esc(r.blurb)}</div><div class="pts">${cost(r)} build points</div></div>${btn}</li>`;
+      <div class="bl">${esc(r.blurb)}</div>${st === 'locked' ? `<div class="pts">${cost(r)} ★</div>` : pips(r)}</div>${btn}</li>`;
   }).join('') + (S.beaten >= RIVALS.length ? '<li class="beaten"><span class="em">🏆</span><div class="grow"><div class="nm">Champion</div><div class="bl">You beat the whole ladder. Try Friendlies, or share your bot code.</div></div></li>' : '');
 
   const opts = oppOptions();
@@ -69,7 +72,7 @@ function renderHome() {
 }
 
 function oppOptions() {
-  const out = RIVALS.map((r, i) => ({ label: `${r.emoji} ${r.name} (${cost(r)})`, ai: r, rival: i }));
+  const out = RIVALS.map((r, i) => ({ label: `${r.emoji} ${r.name} (${cost(r)}★)`, ai: r, rival: i }));
   PRESETS.forEach((p) => out.push({ label: `${p.emoji} ${p.name} (archetype)`, ai: p }));
   S.bots.forEach((b, i) => out.push({ label: `🤖 ${b.name}${i === S.cur ? ' (mirror)' : ''}`, ai: b }));
   return out;
@@ -90,7 +93,7 @@ $('#ladder').onclick = (e) => {
   const b = e.target.closest('[data-rival]');
   if (!b) return;
   const i = +b.dataset.rival;
-  if (cost(bot()) > budget()) return toast(`Over budget: ${cost(bot())}/${budget()} points. Tune your bot first.`);
+  if (cost(bot()) > budget()) return toast(`Over budget: ${cost(bot())}/${budget()} ★. Tune your bot first.`);
   startMatch(bot(), RIVALS[i], { rival: i });
 };
 $('#friendly-go').onclick = () => {
@@ -108,7 +111,7 @@ function openEditor() {
 function edChanged() { save(); renderBudget(); }
 function renderBudget() {
   const c = cost(ed), B = budget(), el = $('#ed-budget');
-  el.textContent = `${c}/${B}`;
+  el.textContent = `★ ${c}/${B}`;
   el.className = 'budget' + (c > B ? ' over' : c === B ? ' full' : '');
 }
 
@@ -116,35 +119,34 @@ function renderEditor() {
   $('#ed-name').value = ed.name;
   renderBudget();
   $('#ed-colors').innerHTML = COLORS.map((c) => `<button data-c="${c}" style="background:${c}" class="${c === ed.color ? 'on' : ''}" aria-label="colour ${c}"></button>`).join('');
-
-  $('#ed-stats').innerHTML = STAT_KEYS.map((k) => {
-    const v = ed.stats[k];
-    return `<div class="stat" data-k="${k}"><div class="t"><i>${STATS[k].icon}</i>${STATS[k].name}</div>
-      <div class="stepper"><button data-d="-1" ${v <= STAT_MIN ? 'disabled' : ''}>−</button><button data-d="1" ${v >= STAT_MAX || cost(ed) >= budget() ? 'disabled' : ''}>+</button></div>
-      <div class="v">${v}/10 · ${STATS[k].fmt(ed)}</div>
-      <div class="bar">${Array.from({ length: 10 }, (_, i) => `<span class="${i < v ? 'on' : ''}"></span>`).join('')}</div>
-      <div class="desc">${STATS[k].desc}</div></div>`;
-  }).join('');
-
-  $('#ed-tactics').innerHTML = TACTICS.map(([k, t, lo, hi, help]) => {
-    const v = Math.round(ed.tactics[k] * 100);
-    return `<div class="tac" data-k="${k}"><div class="top"><span class="t">${t} <button class="q" aria-label="explain">ⓘ</button></span><span class="pct">${v}%</span></div>
-      <input type="range" min="0" max="100" step="5" value="${v}" aria-label="${t}" />
-      <div class="ends"><span>${lo}</span><span>${hi}</span></div><div class="help">${help}</div></div>`;
-  }).join('');
-
-  renderShots();
-  $('#ed-spot').innerHTML = [['L', 'Left'], ['C', 'Centre'], ['R', 'Right']].map(([k, n]) => `<button data-s="${k}" class="${ed.tactics.spot === k ? 'on' : ''}">${n}</button>`).join('');
+  renderStars();
+  renderChoices();
   $('#ed-presets').innerHTML = PRESETS.map((p, i) => `<button data-p="${i}"><b>${p.emoji} ${p.name}</b><span>${esc(p.blurb)}</span></button>`).join('');
   $('#lab-opp').innerHTML = oppOptions().map((o, i) => `<option value="${i}" ${o.rival === Math.min(S.beaten, RIVALS.length - 1) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
   $('#lab-out').innerHTML = '';
   $('#ed-del').disabled = S.bots.length < 2;
 }
 
-function renderShots() {
-  const mix = ed.tactics.mix, tot = SHOTS.reduce((s, [k]) => s + mix[k], 0) || 1;
-  $('#ed-shots').innerHTML = SHOTS.map(([k, n, help]) => `<div class="tac open" data-mix="${k}"><div class="top"><span class="t">${n}</span><span class="pct">${Math.round((mix[k] / tot) * 100)}%</span></div>
-    <input type="range" min="0" max="10" step="1" value="${mix[k]}" aria-label="${n}" /><div class="help">${help}</div></div>`).join('');
+function renderStars() {
+  const d = details(ed), free = budget() - cost(ed);
+  $('#ed-stars').innerHTML = STAR_KEYS.map((k) => {
+    const v = ed.stars[k];
+    const btns = Array.from({ length: STAR_MAX }, (_, i) => {
+      const n = i + 1, on = n <= v, locked = n > v && n - v > free;
+      return `<button data-n="${n}" class="${on ? 'on' : ''} ${locked ? 'locked' : ''}" aria-label="${n} stars">★</button>`;
+    }).join('');
+    return `<div class="starrow" data-k="${k}"><div class="top"><span class="t"><i>${STARS[k].icon}</i>${STARS[k].name}</span><span class="stars">${btns}</span></div>
+      <div class="eff">${STARS[k].fmt(d)}</div><div class="desc">${STARS[k].desc}</div></div>`;
+  }).join('');
+}
+
+function renderChoices() {
+  $('#ed-choices').innerHTML = CHOICES.map(([k, title, opts]) => {
+    const cur = opts.find((o) => o[0] === ed.style[k]);
+    return `<div class="choice" data-k="${k}"><div class="t">${title}</div>
+      <div class="seg">${opts.map(([v, lab]) => `<button data-v="${v}" class="${v === ed.style[k] ? 'on' : ''}">${lab}</button>`).join('')}</div>
+      <div class="what"><b>${cur[1]}:</b> ${cur[2]}</div></div>`;
+  }).join('');
 }
 
 $('#ed-back').onclick = () => { show('home'); renderHome(); };
@@ -153,38 +155,27 @@ $('#ed-colors').onclick = (e) => {
   const c = e.target.dataset.c; if (!c) return;
   ed.color = c; edChanged(); renderEditor();
 };
-$('#ed-stats').onclick = (e) => {
-  const b = e.target.closest('button'); if (!b) return;
-  const k = b.closest('.stat').dataset.k, d = +b.dataset.d;
-  const v = ed.stats[k] + d;
-  if (v < STAT_MIN || v > STAT_MAX || (d > 0 && cost(ed) >= budget())) return;
-  ed.stats[k] = v; edChanged(); renderEditor();
+$('#ed-stars').onclick = (e) => {
+  const b = e.target.closest('button[data-n]'); if (!b) return;
+  const k = b.closest('.starrow').dataset.k;
+  let n = +b.dataset.n;
+  if (n === ed.stars[k] && n > STAR_MIN) n--; // tap the top star again to remove it
+  const free = budget() - cost(ed) + ed.stars[k];
+  if (n > free) { sfx.play('fumble'); return toast(`Not enough stars — free one up elsewhere (${budget()} total)`); }
+  n = Math.max(STAR_MIN, Math.min(STAR_MAX, n));
+  ed.stars[k] = n; sfx.play('star', n); edChanged(); renderStars();
 };
-$('#ed-tactics').oninput = (e) => {
-  const tac = e.target.closest('.tac'); if (!tac) return;
-  ed.tactics[tac.dataset.k] = +e.target.value / 100;
-  tac.querySelector('.pct').textContent = e.target.value + '%';
-  edChanged();
-};
-$('#ed-tactics').onclick = (e) => { if (e.target.classList.contains('q')) e.target.closest('.tac').classList.toggle('open'); };
-$('#ed-shots').oninput = (e) => {
-  const tac = e.target.closest('.tac'); if (!tac) return;
-  ed.tactics.mix[tac.dataset.mix] = +e.target.value;
-  const mix = ed.tactics.mix, tot = SHOTS.reduce((s, [k]) => s + mix[k], 0) || 1;
-  for (const el of $('#ed-shots').querySelectorAll('.tac')) el.querySelector('.pct').textContent = Math.round((mix[el.dataset.mix] / tot) * 100) + '%';
-  edChanged();
-};
-$('#ed-spot').onclick = (e) => {
-  const s = e.target.dataset.s; if (!s) return;
-  ed.tactics.spot = s; edChanged(); renderEditor();
+$('#ed-choices').onclick = (e) => {
+  const b = e.target.closest('button[data-v]'); if (!b) return;
+  ed.style[b.closest('.choice').dataset.k] = b.dataset.v;
+  sfx.play('click'); edChanged(); renderChoices();
 };
 $('#ed-presets').onclick = (e) => {
   const b = e.target.closest('[data-p]'); if (!b) return;
   const p = PRESETS[+b.dataset.p];
   if (!confirm(`Replace ${ed.name}'s settings with "${p.name}"? (name and colour stay)`)) return;
-  ed.stats = clone(p.stats); ed.tactics = clone(p.tactics);
-  // trim to budget if needed (budget always ≥ preset cost, but be safe)
-  while (cost(ed) > budget()) { const k = STAT_KEYS.reduce((a, c) => (ed.stats[c] > ed.stats[a] ? c : a)); ed.stats[k]--; }
+  ed.stars = clone(p.stars); ed.style = clone(p.style);
+  while (cost(ed) > budget()) { const k = STAR_KEYS.reduce((a, c) => (ed.stars[c] > ed.stars[a] ? c : a)); ed.stars[k]--; }
   edChanged(); renderEditor(); toast(`Loaded ${p.name}`);
 };
 $('#ed-copy').onclick = async () => {
@@ -214,7 +205,7 @@ $('#lab-go').onclick = () => {
   const o = oppOptions()[+$('#lab-opp').value];
   const out = $('#lab-out'), btn = $('#lab-go');
   btn.disabled = true;
-  const N = 40, me = clone(ed), opp = clone(o.ai);
+  const N = 40, me = compile(ed), opp = compile(o.ai);
   let w = 0, gf = 0, ga = 0, i = 0;
   const base = (Math.random() * 1e9) | 0;
   const chunk = () => {
@@ -240,10 +231,11 @@ const R = makeRenderer($('#cv'));
 let M = null, ctxM = null, speed = 1, acc = 0, lastT = 0, seen = 0, raf = 0;
 
 function startMatch(a, b, info) {
+  sfx.unlock();
   const A = clone(a), B = clone(b);
   if (A.color === B.color) B.color = COLORS.find((c) => c !== A.color && c !== '#f2f0ff') || '#3d8bff';
   ctxM = { A, B, info, seed: (Math.random() * 1e9) | 0 };
-  M = new Match(A, B, ctxM.seed);
+  M = new Match(compile(A), compile(B), ctxM.seed, { sfx: true });
   seen = 0; acc = 0; lastT = 0;
   $('#m-name0').textContent = A.name; $('#m-name1').textContent = B.name;
   $('#m-dot0').style.background = A.color; $('#m-dot1').style.background = B.color;
@@ -262,7 +254,7 @@ function setSpeed(s) {
 }
 $('#speeds').onclick = (e) => {
   const s = e.target.dataset.s; if (s == null) return;
-  if (s === 'skip') { while (!M.over) M.step(); return; }
+  if (s === 'skip') { while (!M.over) M.step(); M.sfx.length = 0; sfx.play('end', 1, 0, M.winner === 0); return; }
   setSpeed(+s);
 };
 $('#m-quit').onclick = () => {
@@ -280,8 +272,19 @@ function frame(t) {
   R.draw(M, [ctxM.A.color, ctxM.B.color]);
   $('#m-s0').textContent = M.score[0]; $('#m-s1').textContent = M.score[1];
   pumpEvents();
+  pumpSounds();
   if (M.over) { if (!$('#result').hidden) return; setTimeout(showResult, 900); $('#result').hidden = false; $('#result').style.visibility = 'hidden'; return; }
   raf = requestAnimationFrame(frame);
+}
+
+function pumpSounds() {
+  const q = M.sfx;
+  if (!q.length) return;
+  const b = M.ball;
+  const pan = R.vertical ? (b.y / W) * 2 - 1 : (b.x / L) * 2 - 1;
+  // at high speed only the important cues get through
+  for (const e of q) if (speed <= 2 || ['goal', 'end', 'post', 'shot', 'whistle'].includes(e.k)) sfx.play(e.k, e.v, pan * 0.7, e.team === 0);
+  q.length = 0;
 }
 
 function pumpEvents() {
@@ -318,7 +321,7 @@ function showResult() {
   if (won && info.rival >= 0 && info.rival === S.beaten) {
     S.beaten++; save();
     rw.hidden = false;
-    rw.textContent = S.beaten >= RIVALS.length ? '🏆 Ladder complete! +2 build points' : `Rival beaten! +${BUDGET_STEP} build points (now ${budget()})`;
+    rw.textContent = S.beaten >= RIVALS.length ? `🏆 Ladder complete! +${BUDGET_STEP} ★` : `Rival beaten! +${BUDGET_STEP} ★ (now ${budget()})`;
   }
   const s0 = m.stats[0], s1 = m.stats[1], tp = s0.poss + s1.poss || 1;
   const pct = (a, b) => (b ? Math.round((a / b) * 100) + '%' : '–');
@@ -335,31 +338,39 @@ function showResult() {
   $('#r-stats').innerHTML = `<tr class="h"><td style="color:${A.color}">${esc(A.name)}</td><td></td><td style="color:${B.color}">${esc(B.name)}</td></tr>`
     + rows.map(([k, a, b]) => `<tr><td>${a}</td><td class="k">${k}</td><td>${b}</td></tr>`).join('')
     + `<tr><td colspan="3" class="k" style="text-align:left">Goals/shots by type — you: ${typeRow(s0)}<br>them: ${typeRow(s1)}</td></tr>`;
+  $('#r-stats').insertAdjacentHTML('beforeend', `<tr><td colspan="3" class="k" style="text-align:left">Their plan: ${CHOICES.map(([k, t]) => `${t} <b>${optLabel(k, B.style[k])}</b>`).join(' · ')}</td></tr>`);
   $('#r-tips').innerHTML = tips(m, A, B).slice(0, 3).map((t) => `<div>💡 ${t}</div>`).join('');
 }
 
 function tips(m, A, B) {
   const s = m.stats[0], o = m.stats[1], out = [];
   const g = (st, k) => st.byType[k][1];
-  if (s.passes >= 5 && s.passesDone / s.passes < 0.35) out.push('Your passes keep getting cut out. More <b>Vision</b> picks better lanes — or set Back rods / Midfield toward Blast / Shoot.');
-  if (s.fumbles >= 3) out.push(`${s.fumbles} fumbles. Raise <b>Ball control</b>, or lower Patience and Feints so rods hold the ball less.`);
-  if (s.shots >= 6 && s.onTarget / s.shots < 0.7) out.push('Lots of shots off target. <b>Accuracy</b> helps, and Pull / Snake shots are wild without it.');
-  if (s.shots >= 6 && o.blockedBy.GK + o.blockedBy.DEF >= s.shots * 0.5) out.push(`Their back line blocked ${o.blockedBy.GK + o.blockedBy.DEF} shots. Pull and Bank shots get around a set defence; Vision finds the gaps.`);
-  const hurt = Object.keys(o.byType).filter((k) => g(o, k) >= 2).sort((a, b) => g(o, b) - g(o, a))[0];
-  if (hurt === 'pull') out.push(`Their pull shots scored ${g(o, 'pull')}. <b>Reflexes</b> and <b>Rod speed</b> are what stop shots on the move.`);
-  if (hurt === 'straight' && A.tactics.split < 0.5) out.push('Plain straight shots beat you. Try a more <b>Split</b> back line so goalie and defence cover different halves.');
-  if (hurt === 'bank') out.push('Bank shots hurt you. Faster <b>Reflexes</b> help react after the wall bounce.');
-  if (hurt === 'snake' || hurt === 'long') out.push('Their power shots were too quick. <b>Reflexes</b> buy reaction time; a Stack back line doubles up on the shot line.');
-  if (A.tactics.discipline > 0.6 && B.tactics.read > 0.4) out.push('They were <b>reading</b> your signature spot. Lower Shot aim toward Anywhere to be less predictable.');
-  if (B.tactics.feints > 0.6 && A.tactics.read > 0.5) out.push('A feinting opponent loves a reading defence. Slide Defence toward <b>React</b>.');
-  if (cost(A) < budget()) out.push(`You have ${budget() - cost(A)} unspent build points!`);
-  if (!out.length) out.push(m.winner === 0 ? 'Clean win. Try the next rival, or test changes in the Scrimmage lab.' : 'Close one. Use the Scrimmage lab to test a change over 40 matches before the rematch.');
+  const my = A.style, th = B.style;
+  if (g(o, 'pull') >= 2 && my.defence !== 'read') out.push(`Their pull shots scored ${g(o, 'pull')}. A <b>Read</b> defence shuts pull shots down.`);
+  if (th.shot === 'trick' && my.defence === 'read' && m.score[1] >= 3) out.push('Their fakes kept fooling your <b>Read</b> defence. <b>React</b> or Balanced doesn\'t bite.');
+  if (g(o, 'bank') >= 2 && my.defence === 'react') out.push('Bank shots get round a <b>React</b> back line. Try Balanced or Read.');
+  if (my.shot === 'pull' && th.defence === 'read') out.push('Their <b>Read</b> defence smothers pull shots. <b>Trick</b> shots punish defences that read.');
+  if (my.shot === 'trick' && th.defence !== 'read' && m.winner !== 0) out.push('Trick shots only shine against Read defences. Against this one, try <b>Bank</b> or <b>Pull</b>.');
+  if (s.passes >= 5 && s.passesDone / s.passes < 0.4) out.push(`Only ${s.passesDone}/${s.passes} passes arrived. More <b>Accuracy</b> and <b>Control</b>, or Build-up <b>Blast</b>.`);
+  if (s.fumbles >= 3) out.push(`${s.fumbles} fumbles. More <b>Control</b>, or a quicker Tempo so rods hold the ball less.`);
+  if (s.shots >= 6 && s.onTarget / s.shots < 0.7) out.push('Lots of shots off target: <b>Accuracy</b> stars fix that.');
+  if (o.shots >= 8 && s.blockedBy.GK + s.blockedBy.DEF < o.shots * 0.25) out.push('Their shots walked through your back line. <b>Speed</b> stars make blockers react in time.');
+  if (cost(A) < budget()) out.push(`You have ${budget() - cost(A)} unspent ★!`);
+  if (!out.length) out.push(m.winner === 0 ? 'Clean win. On to the next rival — check their game plan first.' : 'Close one. Check their plan below their name on the ladder and test a counter in the Scrimmage lab.');
   return out;
 }
 
 $('#r-home').onclick = () => { $('#result').hidden = true; M = null; show('home'); renderHome(); };
 $('#r-again').onclick = () => { const { info } = ctxM; startMatch(bot(), info.rival >= 0 ? RIVALS[info.rival] : ctxM.B, info); };
 $('#r-tune').onclick = () => { $('#result').hidden = true; M = null; openEditor(); };
+
+// sound toggle + unlock audio on first touch (browsers require a gesture)
+function syncMute() { for (const b of document.querySelectorAll('.mute')) b.textContent = sfx.isMuted() ? '🔇' : '🔊'; }
+document.addEventListener('click', (e) => {
+  sfx.unlock();
+  if (e.target.closest('.mute')) { sfx.setMuted(!sfx.isMuted()); syncMute(); }
+}, true);
+syncMute();
 
 renderHome();
 show('home');
